@@ -41,7 +41,8 @@ rl._writeToOutput = (s) => { if (!muted || s.includes("\n")) rl.output.write(mut
 const queue = []; let waiting = null;
 rl.on("line", (l) => { if (waiting) { const w = waiting; waiting = null; w(l); } else queue.push(l); });
 rl.on("close", () => { if (waiting) { const w = waiting; waiting = null; w(""); } });
-const ask = (q, hidden = false) => new Promise((ok) => { rl.output.write(q); muted = hidden; const done = (a) => { muted = false; if (hidden) rl.output.write("\n"); ok(String(a || "").trim()); }; if (queue.length) done(queue.shift()); else waiting = done; });
+// (control characters are removed: some windows put ^V in the text when Ctrl+V is pressed)
+const ask = (q, hidden = false) => new Promise((ok) => { rl.output.write(q); muted = hidden; const done = (a) => { muted = false; if (hidden) rl.output.write("\n"); ok(String(a || "").replace(/[\x00-\x1f\x7f]/g, "").trim()); }; if (queue.length) done(queue.shift()); else waiting = done; });
 
 console.log(`
 ============================================================
@@ -63,12 +64,26 @@ if (running) fail('The site is running. Close its window first (or use "Move the
 
 let url = arg("url") || "";
 while (!/^https:\/\/[a-z0-9-]+\.supabase\.(co|in|net)\/?$/i.test(url) && !(arg("url") && /^http:\/\/127\.0\.0\.1:\d+/.test(url))) url = await ask("1. Project URL: ");
-let key = arg("key") || ""; while (key.length < 20) key = await ask("2. Secret (service_role) key (hidden): ", true);
+console.log("   (Secrets don't show on screen while you paste - that's normal. To paste: RIGHT-CLICK in this window, then press Enter.)");
+let key = arg("key") || "";
+for (;;) {
+  if (!key) key = await ask("2. Secret key, starts with sb_secret_ (hidden): ", true);
+  if (!key) { console.log("   Nothing was received. Copy the key again in Supabase, RIGHT-CLICK in this window to paste, then press Enter."); continue; }
+  if (/^sb_publishable_/.test(key) || /anon/i.test(key)) { console.log("   That is the PUBLISHABLE (public) key. We need the SECRET key: Project Settings > API Keys > Secret keys (starts with sb_secret_)."); key = ""; continue; }
+  if (!/^sb_secret_[A-Za-z0-9_-]{10,}$/.test(key) && !/^eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/.test(key)) { console.log(`   That doesn't look like a Supabase secret key (received ${key.length} characters). It should start with sb_secret_ (or eyJ for an older service_role key). Please copy it again.`); key = ""; continue; }
+  console.log(`   OK - received a ${/^sb_secret_/.test(key) ? "secret" : "service_role"} key (${key.length} characters).`);
+  break;
+}
 let db = arg("db") || "";
 while (!/^postgres(ql)?:\/\/[^\s]+@[^\s]+\/[^\s]+$/.test(db) || /\[YOUR-PASSWORD\]/i.test(db)) {
   if (db) console.log(/\[YOUR-PASSWORD\]/i.test(db) ? "   Put your database password in place of [YOUR-PASSWORD]." : "   That doesn't look like a connection string (it starts with postgresql://).");
-  db = await ask("3. Connection string (hidden): ", true);
+  db = await ask("3. Connection string with your password (hidden): ", true);
+  if (!db) console.log("   Nothing was received. RIGHT-CLICK in this window to paste, then press Enter.");
 }
+// Shown without the password, so you can check it is the right one (Session pooler, port 5432)
+const shown = db.replace(/^(postgres(?:ql)?:\/\/[^:@\s]+):[^@\s]*@/, "$1:********@");
+console.log("   OK - received: " + shown);
+if (/:6543\//.test(db)) console.log('   Note: that is the "Transaction pooler" (port 6543). The "Session pooler" (port 5432) is better for this website, but this works too.');
 let ca = arg("ca") ?? (await ask("4. Path of the downloaded SSL certificate (press Enter to skip): ")).replace(/^"|"$/g, "");
 if (ca && !existsSync(ca)) { console.log("   That file doesn't exist; continuing without it (the connection is still encrypted)."); ca = ""; }
 const region = arg("region") ?? (await ask("   Region you chose (e.g. Singapore): "));
