@@ -165,7 +165,8 @@ export function createApi({ engine, store, sessions, allow, json, headers, readJ
 
   /* ---------- first start: create the head administrator (this computer only) ---------- */
   const hasHead = () => snapshot(DATA_KEYS.staff).some((x) => x.library === "all" && x.role === "Supervisor" && x.active !== false);
-  const local = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress) && !req.headers["x-forwarded-for"];
+  // This computer itself, not a visitor coming in through a proxy or tunnel on this computer
+  const local = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress) && !req.headers["x-forwarded-for"] && !req.headers["cf-connecting-ip"] && !req.headers["forwarded"];
   const setupTokens = new Map(); // one-time form tokens
   const page = (body) => `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Set up — QCPL Lost &amp; Found</title><link rel="stylesheet" href="/css/fonts.css"><style>
     body{font-family:Inter,system-ui,sans-serif;background:#f8fafc;color:#374151;margin:0;padding:2rem 1rem}main{max-width:30rem;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:2rem}

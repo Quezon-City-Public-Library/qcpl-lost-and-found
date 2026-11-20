@@ -300,8 +300,25 @@ const hostOk = (req) => ALLOWED_HOSTS.has(String(req.headers.host || "").toLower
 /* The API may only be called by this website: the browser must say where the request comes from */
 const sameOrigin = (req) => { const o = req.headers.origin; try { return !!o && ALLOWED_HOSTS.has(new URL(o).host.toLowerCase()); } catch { return false; } };
 const isJson = (req) => /^application\/json\b/i.test(req.headers["content-type"] || "");
-// Behind a proxy (Nginx, Cloudflare…), set TRUST_PROXY=1 so each visitor is counted separately
-const clientIp = (req) => (env.TRUST_PROXY === "1" && String(req.headers["x-forwarded-for"] || "").split(",")[0].trim()) || req.socket.remoteAddress;
+/* The visitor's real address when the site is reached through a proxy, so each visitor is counted separately:
+     TRUST_PROXY=cloudflare  Cloudflare Tunnel on this computer: Cloudflare's CF-Connecting-IP, and only for
+                             requests that come from this computer (cloudflared). Visitors can't fake it.
+     TRUST_PROXY=1           one other proxy (Nginx, IIS, Render…): the LAST address in X-Forwarded-For, the
+                             one the proxy itself added. The first ones can be typed in by anyone. */
+const IP_LIKE = /^[0-9a-f:.]{3,45}$/i;
+const fromThisComputer = (req) => ["127.0.0.1", "::1", "::ffff:127.0.0.1"].includes(req.socket.remoteAddress);
+function clientIp(req) {
+  const direct = req.socket.remoteAddress;
+  if (env.TRUST_PROXY === "cloudflare") {
+    const cf = String(req.headers["cf-connecting-ip"] || "").trim();
+    return fromThisComputer(req) && IP_LIKE.test(cf) ? cf : direct;
+  }
+  if (env.TRUST_PROXY === "1") {
+    const last = String(req.headers["x-forwarded-for"] || "").split(",").map((x) => x.trim()).filter(Boolean).pop();
+    return last && IP_LIKE.test(last) ? last : direct;
+  }
+  return direct;
+}
 
 /* ==========================================================================
    BACKEND — database, rules engine, sessions and API (see server/backend/)

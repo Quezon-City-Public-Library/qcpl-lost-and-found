@@ -7,9 +7,9 @@ const out = {}; let fails = 0;
 const ok = (n, c, x) => { out[n] = c ? "PASS" : "FAIL " + JSON.stringify(x === undefined ? "" : x).slice(0, 200); if (!c) fails++; };
 const PORT = 8371, ORIGIN = `http://localhost:${PORT}`;
 class Br {
-  constructor(url, from) { this.url = url; this.from = from; this.cookie = ""; this.csrf = ""; }
+  constructor(url, from, extra = {}) { this.url = url; this.from = from; this.extra = extra; this.cookie = ""; this.csrf = ""; }
   async req(m, p, body) {
-    const r = await fetch(this.url + p, { method: m, redirect: "manual", headers: { ...(this.from ? { "X-Forwarded-For": this.from } : {}), ...(this.cookie ? { Cookie: this.cookie } : {}), ...(body ? { "Content-Type": "application/json", Origin: ORIGIN, "X-CSRF": this.csrf } : {}) }, body: body ? JSON.stringify(body) : undefined });
+    const r = await fetch(this.url + p, { method: m, redirect: "manual", headers: { ...this.extra, ...(this.from ? { "X-Forwarded-For": this.from } : {}), ...(this.cookie ? { Cookie: this.cookie } : {}), ...(body ? { "Content-Type": "application/json", Origin: ORIGIN, "X-CSRF": this.csrf } : {}) }, body: body ? JSON.stringify(body) : undefined });
     for (const c of r.headers.getSetCookie()) if (/qcpl_sid=/.test(c)) this.cookie = c.split(";")[0];
     const d = await r.json().catch(() => ({})); if (d.csrf) this.csrf = d.csrf; if (d.session && d.session.csrf) this.csrf = d.session.csrf;
     return { s: r.status, d, loc: r.headers.get("location") };
@@ -53,6 +53,22 @@ const sess = await moved.req("GET", "/api/v1/session");
 ok("an administrator session used from outside loses its rights", !sess.d.staff, sess.d.staff);
 ok("…and staff data isn't sent there", ((await moved.req("GET", "/api/v1/sync")).d.data.qcpllf_activity || []).length === 0);
 ok("…and backups can't be reached from there", (await moved.req("GET", "/api/v1/admin/backups")).s === 403);
+await srv.stop();
+
+// ---------- a visitor can't fake a library address ----------
+srv = await startServer({ port: PORT, env: { ADMIN_NETWORKS: "local", TRUST_PROXY: "1" } });
+await setupHead(srv.url, { username: "head", password: pw });
+const chain = new Br(srv.url, "192.168.1.5, 203.0.113.9"); await chain.req("GET", "/api/v1/session"); // the visitor typed the first one
+ok("behind a proxy, a typed-in library address is ignored (the proxy's own entry counts)", (await chain.act("signIn", "admin", "head", pw)).s === 403);
+await srv.stop();
+srv = await startServer({ port: PORT, env: { ADMIN_NETWORKS: "local", TRUST_PROXY: "cloudflare" } });
+await setupHead(srv.url, { username: "head", password: pw });
+const fakeXff = new Br(srv.url, "192.168.1.5", { "CF-Connecting-IP": "203.0.113.9" }); await fakeXff.req("GET", "/api/v1/session");
+ok("Cloudflare: a faked X-Forwarded-For is ignored; Cloudflare's own address counts", (await fakeXff.act("signIn", "admin", "head", pw)).s === 403);
+const lanCf = new Br(srv.url, null, { "CF-Connecting-IP": "192.168.1.20" }); await lanCf.req("GET", "/api/v1/session");
+ok("Cloudflare: a real library-network visitor can sign in", (await lanCf.act("signIn", "admin", "head", pw)).s === 200);
+const viaTunnel = await fetch(srv.url + "/setup", { headers: { "CF-Connecting-IP": "203.0.113.9" }, redirect: "manual" });
+ok("Cloudflare: /setup still isn't treated as this computer", viaTunnel.status === 303 || viaTunnel.status === 403, viaTunnel.status);
 await srv.stop();
 
 // ---------- the rule itself ----------
