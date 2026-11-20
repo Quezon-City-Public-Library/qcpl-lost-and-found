@@ -75,8 +75,11 @@ for (;;) {
   break;
 }
 let db = arg("db") || "";
-while (!/^postgres(ql)?:\/\/[^\s]+@[^\s]+\/[^\s]+$/.test(db) || /\[YOUR-PASSWORD\]/i.test(db)) {
-  if (db) console.log(/\[YOUR-PASSWORD\]/i.test(db) ? "   Put your database password in place of [YOUR-PASSWORD]." : "   That doesn't look like a connection string (it starts with postgresql://).");
+const directOnly = (v) => /@db\.[a-z0-9]+\.supabase\.co[:/]/i.test(v); // "Direct connection": IPv6 only, most networks can't reach it
+while (!/^postgres(ql)?:\/\/[^\s]+@[^\s]+\/[^\s]+$/.test(db) || /\[YOUR-PASSWORD\]/i.test(db) || (directOnly(db) && !flag("allow-direct"))) {
+  if (db) console.log(/\[YOUR-PASSWORD\]/i.test(db) ? "   Put your database password in place of [YOUR-PASSWORD]."
+    : directOnly(db) ? '   That is the "Direct connection" text (db.....supabase.co), which most internet connections in the Philippines can\'t reach.\n   In Supabase: Connect > Direct > choose "Session pooler", and copy that text instead (it ends in pooler.supabase.com:5432/postgres).'
+    : "   That doesn't look like a connection string (it starts with postgresql://).");
   db = await ask("3. Connection string with your password (hidden): ", true);
   if (!db) console.log("   Nothing was received. RIGHT-CLICK in this window to paste, then press Enter.");
 }
