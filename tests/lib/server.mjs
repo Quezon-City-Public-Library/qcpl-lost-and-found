@@ -14,7 +14,7 @@ const healthy = (url) => fetch(url + "/api/health").then((r) => r.ok).catch(() =
 
 /* Settings in server/.env that must never be used by a test (real database, email, texts, AI) */
 export const NO_REAL_SERVICES = { SUPABASE_DB_URL: "", SUPABASE_URL: "", SUPABASE_SERVICE_KEY: "", SUPABASE_CA_FILE: "",
-  SMTP_HOST: "", SMTP_USER: "", SMTP_PASS: "", SEMAPHORE_API_KEY: "", ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "", QCPL_VISION: "", ADMIN_NETWORKS: "", TRUST_PROXY: "" };
+  SMTP_HOST: "", SMTP_USER: "", SMTP_PASS: "", SEMAPHORE_API_KEY: "", ANTHROPIC_API_KEY: "", ANTHROPIC_AUTH_TOKEN: "", QCPL_VISION: "", ADMIN_NETWORKS: "", TRUST_PROXY: "", PUBLIC_TUNNEL: "", SITE_URL: "" };
 export function testEnv(dir, port) {
   return { PORT: String(port), DATA_DIR: dir, BACKUP_DIR: path.join(dir, "backups"), BACKUP_COPY_DIR: path.join(dir, "copies"),
     DEMO_CODES: "1", STRICT_CHECKS: "1", ...NO_REAL_SERVICES };
