@@ -86,7 +86,19 @@ for (;;) {
 const hasSlot = /\[YOUR-PASSWORD\]/i.test(db);
 // Any symbol in the password is written the safe way (e.g. @ becomes %40), so the text can't break
 const withPassword = (pw) => hasSlot ? db.replace(/\[YOUR-PASSWORD\]/i, encodeURIComponent(pw)) : db.replace(/^(postgres(?:ql)?:\/\/[^:@\s]+):[^@\s]*@/, (m, a) => `${a}:${encodeURIComponent(pw)}@`);
-const askPassword = async () => { for (;;) { const pw = await ask("   Database password (hidden): ", true); if (pw) { console.log(`   OK - received a password (${pw.length} characters).`); return pw; } console.log("   Nothing was received. RIGHT-CLICK to paste (or type it), then press Enter."); } };
+const askPassword = async () => {
+  for (;;) {
+    const pw = await ask("   Database password (hidden): ", true);
+    if (!pw) { console.log("   Nothing was received. RIGHT-CLICK to paste (or type it), then press Enter."); continue; }
+    // Windows pastes what was copied LAST: catch the connection text or the secret key pasted here by mistake
+    if (/^postgres(ql)?:\/\//i.test(pw) || /pooler\.supabase|supabase\.co/i.test(pw)) { console.log("   That is the CONNECTION TEXT again, not the password (Windows pastes what you copied last).\n   Go to where you saved the database password, COPY IT, then right-click here and press Enter."); continue; }
+    if (/^sb_(secret|publishable)_/.test(pw) || /^eyJ/.test(pw)) { console.log("   That is a Supabase KEY, not the database password. Copy the database password, then right-click here."); continue; }
+    if (/^\[?YOUR-PASSWORD\]?$/i.test(pw)) { console.log("   Type your real database password (without [ ])."); continue; }
+    if (pw.length > 64) { console.log(`   That is ${pw.length} characters - too long for a database password (usually about 16-20). You probably pasted something else. Copy the password again.`); continue; }
+    console.log(`   OK - received a password (${pw.length} characters).`);
+    return pw;
+  }
+};
 let dbUrl = hasSlot ? withPassword(await askPassword()) : db;
 // Shown without the password, so you can check it is the right one (Session pooler, port 5432)
 console.log("   OK - received: " + db.replace(/^(postgres(?:ql)?:\/\/[^:@\s]+):[^@\s]*@/, "$1:********@"));
