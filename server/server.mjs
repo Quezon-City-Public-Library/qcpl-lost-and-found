@@ -44,6 +44,16 @@ const { MESSAGES, messagesFor, placeFil, LIBRARY_NAMES } = createRequire(import.
 
 const env = process.env;
 const PORT = Number(env.PORT || 8360);
+/* Free public address (PUBLIC_TUNNEL=quick, see backend/tunnel.mjs): started first, so the site knows its address */
+let tunnel = null;
+if (env.PUBLIC_TUNNEL === "quick") {
+  const { startQuickTunnel } = await import("./backend/tunnel.mjs");
+  try {
+    tunnel = await startQuickTunnel({ port: PORT });
+    env.SITE_URL = tunnel.url;
+    if (!env.TRUST_PROXY) env.TRUST_PROXY = "cloudflare"; // visitors' real addresses, which they can't fake
+  } catch (e) { console.error("The free public address was not started: " + e.message + " The site still works on this computer."); }
+}
 const SITE_URL = (env.SITE_URL || "").replace(/\/+$/, ""); // public address of the site, used in messages (optional)
 
 /* ==========================================================================
@@ -518,6 +528,17 @@ const HOST = env.HOST || "127.0.0.1";
 server.listen(PORT, HOST, async () => {
   const onOff = (b) => (b ? "ON" : "OFF");
   console.log(`QCPL Lost & Found is running at http://localhost:${PORT}${HOST === "127.0.0.1" ? "" : `  (listening on ${HOST})`}`);
+  if (tunnel) {
+    console.log(`
+  PUBLIC ADDRESS (free Cloudflare Quick Tunnel - it CHANGES every time the site starts):
+    ${tunnel.url}
+    Admin sign-in: ${tunnel.url}/admin
+`);
+    // A shortcut in the Links folder that always opens the current public address
+    try { const { writeFileSync } = await import("node:fs"); writeFileSync(path.join(ROOT, "Links", "0 - PUBLIC address (changes when the site restarts).url"), `[InternetShortcut]
+URL=${tunnel.url}/
+`); } catch {}
+  }
   const missingMail = ["SMTP_HOST", "SMTP_USER", "SMTP_PASS"].filter((k) => !env[k]);
   console.log(`  Email updates:        ${onOff(EMAIL_ON)}${EMAIL_ON ? ` (from ${MAIL_FROM})` : missingMail.length < 3 ? `  - still empty in server/.env: ${missingMail.join(", ")}` : "  - add SMTP settings to server/.env"}`);
   console.log(`  Text (SMS) updates:   ${onOff(SMS_ON)}${SMS_ON ? " (Semaphore)" : "  - add SEMAPHORE_API_KEY to server/.env"}`);

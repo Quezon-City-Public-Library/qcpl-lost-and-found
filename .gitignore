@@ -32,3 +32,6 @@ desktop.ini
 # Not part of this website (a data export from another app; holds people's details)
 Backend-SQL-database.json
 *.export.json
+
+# Made by the site while it runs (the free public address changes at each start)
+Links/0 - PUBLIC address*

@@ -344,6 +344,15 @@ The data can live in **Supabase** (a cloud Postgres database) instead of only on
 - The Privacy Policy automatically says the data is kept by Supabase and in which region, once it is in use (`SUPABASE_REGION`).
 - **To go back** to this computer only: remove the `SUPABASE_DB_URL` line from `server/.env` and restart; the working copy has everything up to the last change.
 
+### A free public address (Cloudflare Quick Tunnel)
+With `PUBLIC_TUNNEL=quick` in `server/.env`, the site starts Cloudflare's connector (`cloudflared`, installed with `winget install Cloudflare.cloudflared`) and gets a public HTTPS address like `https://some-random-words.trycloudflare.com` — no account or domain needed.
+- The address is printed in the server window and saved as **`Links/0 - PUBLIC address (changes when the site restarts).url`**. Admins use `<that address>/admin`.
+- **It changes every time the site starts** (e.g. after a Windows restart), so shared links and printed QR posters stop working. Cloudflare offers Quick Tunnels for testing, with no uptime promise: use it for a **pilot**, not the public launch.
+- The site sets itself up for it: its public address (SITE_URL), secure cookies, and `TRUST_PROXY=cloudflare` (visitors' real addresses from Cloudflare, which they can't fake). Only this computer's `cloudflared` is trusted.
+- Private files stay blocked, `/setup` can't be used from the internet, and the security headers are sent as before.
+- **For the launch:** a named Cloudflare Tunnel with a domain (a fixed address; runs as a Windows service), then `SITE_URL=https://your-address` and `TRUST_PROXY=cloudflare` instead of `PUBLIC_TUNNEL`.
+- To turn it off, delete the `PUBLIC_TUNNEL=quick` line and restart.
+
 ### Records in Excel
 **Staff area → Reports → All records in Excel** (supervisors). One `.xlsx` workbook with a **Summary** sheet and a sheet each for **Lost reports, Found items, Claims, Users, Staff, Activity log, Feedback** and **Certificates** — header row frozen, filters on, real dates in Philippine time, money as numbers.
 - A library supervisor gets their own library; the head office can choose one library or **All libraries**. Desk staff and visitors can't export, and neither can someone still on a temporary password.
