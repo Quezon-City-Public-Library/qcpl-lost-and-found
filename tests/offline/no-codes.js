@@ -1,0 +1,18 @@
+const out = {};
+const ok = (name, cond, extra) => { out[name] = cond ? "PASS" : "FAIL " + JSON.stringify(extra || ""); };
+Object.keys(localStorage).forEach((k) => k.startsWith("qcpllf_") && k !== "qcpllf_clean_v1" && localStorage.removeItem(k));
+LF._resetCaches && LF._resetCaches();
+ok("codes are off", ORG.signupCode === false);
+const lost = await LF.createLost({ category: "bags", itemName: "Green umbrella", dateLost: new Date().toISOString().slice(0, 10), location: LOCATIONS[0], name: "Mia Lim", phone: "09173334444", consent: true });
+const u = await LF.register({ name: "Mia Lim", phone: "09173334444", email: "", password: "miapass123", role: USER_ROLES[0], memberId: "" });
+ok("signed in right after creating the account", LF.currentUser() && LF.currentUser().id === u.id);
+ok("no code waiting", LF.pendingVerification() === null);
+const r = await LF.sendSignupCode({ demo: true });
+ok("no code is made", r.sent === false && !r.demoCode, r);
+ok("unconfirmed number: earlier report not on My page", !LF.recordsForPerson({ userId: u.id, phone: "" }).lost.length);
+await LF.signOut();
+const role = await LF.signIn("user", "09173334444", "miapass123");
+ok("signs in again later without a code", role === "user" && LF.currentUser() && LF.currentUser().id === u.id, role);
+location.hash = "#/verify"; await new Promise((x) => setTimeout(x, 800));
+ok("code page goes to My page", location.hash === "#/my", location.hash);
+return out;

@@ -1,0 +1,40 @@
+import { randomBytes } from "node:crypto";
+import { launch } from "../lib/cdp.mjs";
+const BASE = "http://localhost:8371/";
+const out = {}; let fails = 0;
+const ok = (n, c, x) => { out[n] = c ? "PASS" : "FAIL" + (x !== undefined ? " — " + JSON.stringify(x).slice(0, 300) : ""); if (!c) fails++; };
+const W = (ms) => `await new Promise(r => setTimeout(r, ${ms}));`;
+const pw = randomBytes(15).toString("base64url"), pass = "four words make strong " + randomBytes(3).toString("hex");
+const page = await (await fetch(BASE + "setup")).text();
+const t = (/name="t" value="([^"]+)"/.exec(page) || [])[1];
+await fetch(BASE + "setup", { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ t, name: "Head Admin", username: "head", password: pw, password2: pw }) });
+const S = await launch({ W: 1366, H: 900, outDir: "audit-backup" });
+await S.nav(BASE + "admin", 3500);
+await S.ev(`document.querySelector('#admId').value = 'head'; document.querySelector('#admPw').value = ${JSON.stringify(pw)}; document.querySelector('#admForm').requestSubmit(); ${W(2500)}`);
+const tab = await S.ev(`return !!document.querySelector('a[href="#/staff/backups"]')`);
+ok("head admin sees the Backups tab", tab);
+await S.ev(`location.hash = '#/staff/backups'; ${W(1500)}`);
+const p1 = await S.ev(`return document.querySelector('#staffMain').innerText`);
+ok("page says backups are not encrypted yet", /not encrypted yet/i.test(p1) && /Turn on encrypted backups/.test(p1), p1.slice(0, 200));
+await S.ev(`document.querySelector('#bkP1').value = ${JSON.stringify(pass)}; document.querySelector('#bkP2').value = ${JSON.stringify(pass)}; document.querySelector('#bkPw').value = ${JSON.stringify(pw)}; document.querySelector('#bkOn').requestSubmit(); ${W(4000)}`);
+const p2 = await S.ev(`return document.querySelector('#staffMain').innerText`);
+ok("turning on with the form works", /Encrypted backups are on/.test(p2), p2.slice(0, 300));
+await S.ev(`document.querySelector('#bkNow').click(); ${W(2500)}`);
+const rows = await S.ev(`return [...document.querySelectorAll('#staffMain tbody tr')].map(r => r.innerText.replace(/\\s+/g, ' '))`);
+ok("Back up now adds a backup to the list", rows.length >= 1 && rows.some((r) => /Made by hand/.test(r)), rows);
+await S.shot("backups-page");
+const test = await S.ev(`document.querySelector('[data-bk-test]').click(); ${W(600)}
+  document.querySelector('#bkPass').value = ${JSON.stringify(pass)}; document.querySelector('#bkMe').value = ${JSON.stringify(pw)}; document.querySelector('#bkForm').requestSubmit(); ${W(5000)}
+  return document.querySelector('#dialog').innerText;`);
+ok("Test this backup says it is good", /The backup is good/.test(test), test.slice(0, 300));
+await S.shot("backups-test");
+const dlHref = await S.ev(`document.querySelector('#dialog [data-close]').click(); ${W(300)} return document.querySelector('a[download]').getAttribute('href')`);
+ok("Download link points to an encrypted backup", /download\?name=qcpl-.*\.qcplbak$/.test(dlHref), dlHref);
+// A library supervisor doesn't see the page
+await S.ev(`await LF.createStaff({ name: "Lib Sup", username: "libsup", role: "Supervisor", password: "LibSup-pass-123" }); await LF.signOut(); ${W(500)}`);
+await S.ev(`location.hash = '#/staff'; ${W(1000)} document.querySelector('#admId').value = 'libsup'; document.querySelector('#admPw').value = 'LibSup-pass-123'; document.querySelector('#admForm').requestSubmit(); ${W(2000)}`);
+await S.ev(`await LF.changeStaffPassword('LibSup-pass-123', 'LibSup-own-pass-456'); location.hash = '#/staff/dashboard'; ${W(1500)}`);
+ok("a library supervisor has no Backups tab", await S.ev(`return !document.querySelector('a[href="#/staff/backups"]')`));
+ok("no script errors", S.errors.length === 0, S.errors.slice(0, 2));
+S.close();
+console.log(JSON.stringify(out, null, 1)); console.log(fails ? `\n${fails} FAILED` : "\nALL PASSED");

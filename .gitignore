@@ -1,0 +1,34 @@
+# Never in GitHub: secrets, data, backups, installed packages
+server/.env
+server/.env.*
+!server/.env.example
+*.pem
+*.crt
+*.key
+
+# People's data and backups (they live in the data folder, Supabase and the encrypted backups)
+data/
+server/data/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.qcplbak
+backups/
+restore-pending.*
+
+# Installed packages (npm install puts them back)
+node_modules/
+
+# Made by tools (rebuild with: node tools/build-offline.mjs)
+QCPL-Lost-and-Found-OFFLINE.html
+
+# Local tool settings and logs
+.claude/
+*.log
+Thumbs.db
+desktop.ini
+
+# Not part of this website (a data export from another app; holds people's details)
+Backend-SQL-database.json
+*.export.json
