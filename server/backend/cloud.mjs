@@ -188,7 +188,8 @@ export function createCloud({ env, log = console.log }) {
   }
 
   /* ---------- photos (Storage) ---------- */
-  const sHead = (extra = {}) => ({ apikey: key, Authorization: `Bearer ${key}`, ...extra });
+  // New "secret" keys (sb_secret_…) go in the apikey header only; older service_role keys (JWT, eyJ…) also as Bearer
+  const sHead = (extra = {}) => ({ apikey: key, ...(/^eyJ/.test(key) ? { Authorization: `Bearer ${key}` } : {}), ...extra });
   const objUrl = (id) => `${storageUrl}/storage/v1/object/${BUCKET}/${id}`;
   function needStorage() { if (!storageUrl || !key) throw new Error("Photo storage isn't set up (SUPABASE_URL and SUPABASE_SERVICE_KEY)."); }
   async function ensureBucket() {

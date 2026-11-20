@@ -10,7 +10,7 @@ import { SERVER_DIR } from "./server.mjs";
 const req = createRequire(path.join(SERVER_DIR, "package.json"));
 const imp = (name) => import(pathToFileURL(req.resolve(name)).href);
 
-export const FAKE_KEY = "test-service-role-key-not-real-0123456789";
+export const FAKE_KEY = "sb_secret_test-key-not-real-0123456789";
 
 export async function startFakeSupabase({ pgPort = 54329, storagePort = 54330 } = {}) {
   const { PGlite } = await imp("@electric-sql/pglite");
@@ -24,7 +24,7 @@ export async function startFakeSupabase({ pgPort = 54329, storagePort = 54330 } 
   const storage = http.createServer(async (rq, rs) => {
     const send = (code, body) => { rs.writeHead(code, { "Content-Type": "application/json" }); rs.end(typeof body === "string" ? body : JSON.stringify(body)); };
     if (storageDown) return send(503, { error: "down" });
-    if (rq.headers.authorization !== `Bearer ${FAKE_KEY}`) return send(401, { error: "Invalid key" });
+    if (rq.headers.apikey !== FAKE_KEY) return send(401, { error: "Invalid key" });
     const chunks = []; for await (const c of rq) chunks.push(c);
     const body = Buffer.concat(chunks), u = new URL(rq.url, "http://x"), p = u.pathname;
     let m;
