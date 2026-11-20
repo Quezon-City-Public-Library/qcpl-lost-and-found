@@ -53,7 +53,7 @@ Have these ready from your Supabase project (supabase.com/dashboard):
   2. Secret key      - Project Settings > API Keys: the "service_role" / secret key
                        (NOT the "anon" / publishable key). It gives full access: never share it.
   3. Connection string - the green "Connect" button at the top > "Session pooler",
-                       copy the URI and put your database password in place of [YOUR-PASSWORD].
+                       copy the URI exactly as shown (with [YOUR-PASSWORD]) - the password is asked next.
   4. (Recommended) SSL certificate - Database Settings > SSL Configuration > Download certificate.
 Pick the region closest to the Philippines (e.g. Singapore) when you create the project.
 `);
@@ -76,16 +76,20 @@ for (;;) {
 }
 let db = arg("db") || "";
 const directOnly = (v) => /@db\.[a-z0-9]+\.supabase\.co[:/]/i.test(v); // "Direct connection": IPv6 only, most networks can't reach it
-while (!/^postgres(ql)?:\/\/[^\s]+@[^\s]+\/[^\s]+$/.test(db) || /\[YOUR-PASSWORD\]/i.test(db) || (directOnly(db) && !flag("allow-direct"))) {
-  if (db) console.log(/\[YOUR-PASSWORD\]/i.test(db) ? "   Put your database password in place of [YOUR-PASSWORD]."
-    : directOnly(db) ? '   That is the "Direct connection" text (db.....supabase.co), which most internet connections in the Philippines can\'t reach.\n   In Supabase: Connect > Direct > choose "Session pooler", and copy that text instead (it ends in pooler.supabase.com:5432/postgres).'
-    : "   That doesn't look like a connection string (it starts with postgresql://).");
-  db = await ask("3. Connection string with your password (hidden): ", true);
-  if (!db) console.log("   Nothing was received. RIGHT-CLICK in this window to paste, then press Enter.");
+// The text can be pasted exactly as Supabase shows it (with [YOUR-PASSWORD]); the password is then asked separately
+for (;;) {
+  if (!db) { db = await ask("3. Connection string, exactly as Supabase shows it (hidden): ", true); if (!db) { console.log("   Nothing was received. RIGHT-CLICK in this window to paste, then press Enter."); continue; } }
+  if (!/^postgres(ql)?:\/\/[^\s]+@[^\s]+\/[^\s]+$/.test(db)) { console.log("   That doesn't look like a connection string (it starts with postgresql://)."); db = ""; continue; }
+  if (directOnly(db) && !flag("allow-direct")) { console.log('   That is the "Direct connection" text (db.....supabase.co), which most internet connections in the Philippines can\'t reach.\n   In Supabase: Connect > Direct > choose "Session pooler", and copy that text instead (it ends in pooler.supabase.com:5432/postgres).'); db = ""; continue; }
+  break;
 }
+const hasSlot = /\[YOUR-PASSWORD\]/i.test(db);
+// Any symbol in the password is written the safe way (e.g. @ becomes %40), so the text can't break
+const withPassword = (pw) => hasSlot ? db.replace(/\[YOUR-PASSWORD\]/i, encodeURIComponent(pw)) : db.replace(/^(postgres(?:ql)?:\/\/[^:@\s]+):[^@\s]*@/, (m, a) => `${a}:${encodeURIComponent(pw)}@`);
+const askPassword = async () => { for (;;) { const pw = await ask("   Database password (hidden): ", true); if (pw) { console.log(`   OK - received a password (${pw.length} characters).`); return pw; } console.log("   Nothing was received. RIGHT-CLICK to paste (or type it), then press Enter."); } };
+let dbUrl = hasSlot ? withPassword(await askPassword()) : db;
 // Shown without the password, so you can check it is the right one (Session pooler, port 5432)
-const shown = db.replace(/^(postgres(?:ql)?:\/\/[^:@\s]+):[^@\s]*@/, "$1:********@");
-console.log("   OK - received: " + shown);
+console.log("   OK - received: " + db.replace(/^(postgres(?:ql)?:\/\/[^:@\s]+):[^@\s]*@/, "$1:********@"));
 if (/:6543\//.test(db)) console.log('   Note: that is the "Transaction pooler" (port 6543). The "Session pooler" (port 5432) is better for this website, but this works too.');
 let ca = arg("ca") ?? (await ask("4. Path of the downloaded SSL certificate (press Enter to skip): ")).replace(/^"|"$/g, "");
 if (ca && !existsSync(ca)) { console.log("   That file doesn't exist; continuing without it (the connection is still encrypted)."); ca = ""; }
@@ -93,10 +97,25 @@ const region = arg("region") ?? (await ask("   Region you chose (e.g. Singapore)
 
 /* ---------- connect and prepare ---------- */
 const { createCloud } = await import("./backend/cloud.mjs");
-const env = { SUPABASE_DB_URL: db, SUPABASE_URL: url.replace(/\/+$/, ""), SUPABASE_SERVICE_KEY: key, SUPABASE_CA_FILE: ca, SUPABASE_REGION: region, SUPABASE_POOL_MAX: process.env.SUPABASE_POOL_MAX || "" };
-const cloud = createCloud({ env, log: () => {} });
-console.log("\nConnecting to Supabase...");
-try { await cloud.ensureSchema(); } catch (e) { await cloud.close().catch(() => {}); fail("Couldn't reach the database: " + e.message + "\nCheck the connection string and the password (and your internet)."); }
+let env, cloud;
+for (let tries = 1; ; tries++) {
+  env = { SUPABASE_DB_URL: dbUrl, SUPABASE_URL: url.replace(/\/+$/, ""), SUPABASE_SERVICE_KEY: key, SUPABASE_CA_FILE: ca, SUPABASE_REGION: region, SUPABASE_POOL_MAX: process.env.SUPABASE_POOL_MAX || "" };
+  cloud = createCloud({ env, log: () => {} });
+  console.log("\nConnecting to Supabase...");
+  try { await cloud.ensureSchema(); break; }
+  catch (e) {
+    await cloud.close().catch(() => {});
+    const wrongPassword = e.code === "28P01" || /password authentication failed/i.test(e.message);
+    if (wrongPassword && tries < 4 && !arg("db")) {
+      console.log(`   The database password is not correct (try ${tries} of 3).
+   It is the DATABASE password you chose or generated when you created the project - not your Supabase sign-in password.
+   Forgot it? In Supabase: Project Settings > Database > "Reset database password", then type the new one here.`);
+      dbUrl = withPassword(await askPassword());
+      continue;
+    }
+    fail("Couldn't reach the database: " + e.message + (wrongPassword ? "\nThe database password is not correct. Reset it in Supabase (Project Settings > Database) and run this again." : "\nCheck the connection string and your internet."));
+  }
+}
 try { await cloud.ensureBucket(); } catch (e) { await cloud.close().catch(() => {}); fail("Couldn't prepare photo storage: " + e.message + "\nCheck the Project URL and the secret key."); }
 try { await cloud.acquireLease(); } catch (e) { await cloud.close().catch(() => {}); fail(e.message); }
 console.log("  OK: connected, private tables and photo bucket ready.");
@@ -107,7 +126,7 @@ if (hasData) {
   console.log(`\nSupabase ALREADY has data: ${Object.entries(before).filter(([, n]) => n).map(([k, n]) => `${n} ${k}`).join(", ")}.`);
   const a = flag("replace") ? "REPLACE" : await ask('Type REPLACE to replace it with the data on this computer, or press Enter to keep Supabase\'s data and just connect: ');
   if (a !== "REPLACE") {
-    for (const [k, v] of Object.entries({ SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SERVICE_KEY: key, SUPABASE_DB_URL: db, SUPABASE_CA_FILE: ca, SUPABASE_REGION: region })) setVal(k, v);
+    for (const [k, v] of Object.entries({ SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SERVICE_KEY: key, SUPABASE_DB_URL: dbUrl, SUPABASE_CA_FILE: ca, SUPABASE_REGION: region })) setVal(k, v);
     writeFileSync(ENV_FILE, envText); await cloud.close(); rl.close();
     console.log("\nConnected to the existing Supabase data (nothing was copied). The site will load it at the next start.\n");
     process.exit(0);
@@ -139,7 +158,7 @@ store.db.close();
 await cloud.close();
 if (!same) fail("Something didn't copy. Please run this again.");
 
-for (const [k, v] of Object.entries({ SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SERVICE_KEY: key, SUPABASE_DB_URL: db, SUPABASE_CA_FILE: ca, SUPABASE_REGION: region })) setVal(k, v);
+for (const [k, v] of Object.entries({ SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SERVICE_KEY: key, SUPABASE_DB_URL: dbUrl, SUPABASE_CA_FILE: ca, SUPABASE_REGION: region })) setVal(k, v);
 writeFileSync(ENV_FILE, envText);
 rl.close();
 console.log(`
